@@ -1,4 +1,4 @@
-# Сеть и подсеть
+# Подготовка сети и подсети
 
 export PREFIX=akimov-04
 export ZONE=ru-central1-d
@@ -17,7 +17,7 @@ yc vpc subnet list
 
 
 
-# Машина в своей сети
+# Создание виртуальной машины
 
 yc compute instance create \
     --name "$PREFIX-web-1" \
@@ -32,5 +32,18 @@ yc compute instance create \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --labels created-by=cli
 
+
+
+# Получение публичного адреса созданной виртуальной машины
+
+yc compute instance get "$PREFIX-web-1" --format json \
+    | jq -r '.network_interfaces[0].primary_v4_address.one_to_one_nat.address'
+
+export VM_IP=$(yc compute instance get "$PREFIX-web-1" --format json \
+  | jq -r '.network_interfaces[0].primary_v4_address.one_to_one_nat.address')
+
 # Пригодиться, когда прерываемая машина неожиданно остановится
 yc compute instance list --format json | jq -r '.[] | select(.status != "RUNNING") | .name'
+
+
+
