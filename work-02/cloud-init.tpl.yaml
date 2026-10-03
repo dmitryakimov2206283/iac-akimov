@@ -14,6 +14,14 @@ packages:
   - nginx
 
 runcmd:
+  - |
+    if [ -b /dev/disk/by-id/virtio-data ]; then
+        mkfs.ext4 /dev/disk/by-id/virtio-data
+        mkdir -p /mnt/data
+        mount /dev/disk/by-id/virtio-data /mnt/data
+        echo "/dev/disk/by-id/virtio-data  /mnt/data  ext4  defaults,nofail  0  2" >> /etc/fstab
+        systemctl daemon-reload
+    fi
   - sed -i 's/listen 80 default_server;/listen ${APP_PORT} default_server;/' /etc/nginx/sites-available/default
   - sed -i 's/listen \[::\]:80 default_server;/listen [::]:${APP_PORT} default_server;/' /etc/nginx/sites-available/default
   - bash -c 'echo "${GREETING} on $(hostname)" > /var/www/html/index.nginx-debian.html'

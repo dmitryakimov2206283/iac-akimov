@@ -12,7 +12,27 @@ GREETING=devlab
 VM_COUNT=3
 DISK_SIZE=20
 BOOT_SIZE=15
-IMAGE_FAMILY=ubuntu-2404-lts 
+IMAGE_FAMILY=ubuntu-2404-lts
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --prefix)         PREFIX="$2";         shift 2 ;;
+        --zone-a)         ZONE_A="$2";         shift 2 ;;
+        --zone-b)         ZONE_B="$2";         shift 2 ;;
+        --cidr-a)         CIDR_A="$2";         shift 2 ;;
+        --cidr-b)         CIDR_B="$2";         shift 2 ;;
+        --port)           APP_PORT="$2";       shift 2 ;;
+        --greeting)       GREETING="$2";       shift 2 ;;
+        --vm-count)       VM_COUNT="$2";       shift 2 ;;
+        --disk-size)      DISK_SIZE="$2";      shift 2 ;;
+        --boot-size)      BOOT_SIZE="$2";      shift 2 ;;
+        --image-family)   IMAGE_FAMILY="$2";   shift 2 ;;
+        *)
+            echo "Ошибка: Неизвестный параметр $1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "==> сеть и подсети"
 yc vpc network create --name "$PREFIX-net"
@@ -28,12 +48,23 @@ export APP_PORT GREETING SSH_KEY
 envsubst '${APP_PORT} ${GREETING} ${SSH_KEY}' \
   < work-02/cloud-init.tpl.yaml > work-02/cloud-init.yaml
 
+echo "==> создаем дополнительный диск"
+yc compute disk create --name "$PREFIX-data" --zone "$ZONE_A" \
+  --size "$DISK_SIZE" --type network-hdd
+
 echo "==> машины"
 ZONES=("$ZONE_A" "$ZONE_B")
 SUBNETS=("$PREFIX-subnet-a" "$PREFIX-subnet-b")
 
 for i in $(seq 1 "$VM_COUNT"); do
   idx=$(( (i - 1) % 2 ))
+
+  EXTRA_ARGS=()
+
+  if [ "$i" -eq 1 ]; then
+      EXTRA_ARGS+=( "--attach-disk" "disk-name=${PREFIX}-data,device-name=data" )
+  fi
+
   yc compute instance create \
     --name "$PREFIX-app-$i" \
     --zone "${ZONES[$idx]}" \
@@ -41,19 +72,11 @@ for i in $(seq 1 "$VM_COUNT"); do
     --cores=2 --core-fraction=20 --memory=2 \
     --preemptible \
     --create-boot-disk image-folder-id=standard-images,image-family="$IMAGE_FAMILY",type=network-hdd,size="$BOOT_SIZE" \
+    "${EXTRA_ARGS[@]}" \
     --network-interface subnet-name="${SUBNETS[$idx]}",nat-ip-version=ipv4 \
     --hostname "$PREFIX-app-$i" \
     --metadata-from-file user-data=work-02/cloud-init.yaml
 done
-
-echo "==> дополнительный диск"
-yc compute disk create --name "$PREFIX-data" --zone "$ZONE_A" \
-  --size "$DISK_SIZE" --type network-hdd
-
-yc compute instance attach-disk "$PREFIX-app-1" \
-  --disk-name "$PREFIX-data" \
-  --device-name data \
-  --auto-delete=false
 
 echo "==> целевая группа"
 
